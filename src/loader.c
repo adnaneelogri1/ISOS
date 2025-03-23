@@ -59,6 +59,14 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state) {
 
 static struct argp argp = {options, parse_opt, args_doc, doc};
 
+// functions to be loaded
+const char* new_bar(){
+    return "Hello from new_bar()";
+}
+const char* new_foo(){
+    return "Hello from new_foo()";
+}
+
 int main(int argc, char **argv) {
     struct arguments args;
     
@@ -90,7 +98,7 @@ int main(int argc, char **argv) {
             const char *result = func();
             printf("%s() => %s\n", args.func_names[i], result);
         } else {
-            fprintf(stderr, "Error: function %s not found\n", args.func_names[i]);
+            perror("Error: function  not found\n");
         }
     }
     

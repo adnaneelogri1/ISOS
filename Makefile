@@ -3,14 +3,9 @@
 # Make sure to include this file in your root Makefile (i.e., at the top-level of your repository).
 #
 
-
 INCLUDE_DIR=./include
 
-SRC_FILES=./src/loader.c ./src/utils.c
-
-# TODO
-# Uncomment this and initialize it to the correct path(s) to your source files if your project sources are not located in `src`.
-#vpath %.c path/to/src
+SRC_FILES=./src/loader.c ./src/utils.c ./src/elf_parser.c
 
 # Compiler settings
 CC = gcc
@@ -31,12 +26,17 @@ utils.o: src/utils.c
 loader.o: src/loader.c
 	$(CC) $(CFLAGS) -c -o $@ $<
 
+elf_parser.o: src/elf_parser.c
+	$(CC) $(CFLAGS) -c -o $@ $<
+
 # Main program
-isos_loader: loader.o utils.o
+isos_loader: loader.o utils.o elf_parser.o
 	$(CC) -o $@ $^ -ldl
 
+test:
+	./test/elf_parser.sh 
 # Clean up
 clean:
 	rm -f *.o *.so isos_loader
 
-.PHONY: all clean
+.PHONY: all clean test

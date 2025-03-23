@@ -7,8 +7,10 @@ const char* bar_exported();
 
 // imported functions (commented out for part 2)
 /*
-const char* foo_imported();
-const char* bar_imported();
-*/
 
+*/
+const char* foo_imported();
+const char* bar_imported(); 
+extern const char* new_foo();
+extern const char* new_bar();
 #endif 
