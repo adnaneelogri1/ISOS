@@ -7,10 +7,11 @@ const char* foo_exported() {
 const char* bar_exported() {
     return "Hello from bar_exported()";
 }
+
 const char* bar_imported(){
     return new_bar();
 }
+
 const char* foo_imported(){
     return new_foo();
 }
-// imported functions (commented out for part 2)

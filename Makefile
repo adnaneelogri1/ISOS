@@ -5,8 +5,8 @@
 
 INCLUDE_DIR=./include
 
-SRC_FILES=./src/loader.c ./src/utils.c ./src/elf_parser.c
-
+SRC_FILES=./src/loader.c ./src/utils.c ./src/elf_parser.c ./src/load_library.c ./src/relocation.c ./src/debug.c
+ 
 # Compiler settings
 CC = gcc
 CFLAGS = -Wall -I$(INCLUDE_DIR)
@@ -29,12 +29,21 @@ loader.o: src/loader.c
 elf_parser.o: src/elf_parser.c
 	$(CC) $(CFLAGS) -c -o $@ $<
 
+load_library.o: src/load_library.c
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+relocation.o: src/relocation.c
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+debug.o: src/debug.c
+	$(CC) $(CFLAGS) -c -o $@ $<
 # Main program
-isos_loader: loader.o utils.o elf_parser.o
+isos_loader: loader.o utils.o elf_parser.o load_library.o relocation.o debug.o
 	$(CC) -o $@ $^ -ldl
 
 test:
 	./test/elf_parser.sh 
+
 # Clean up
 clean:
 	rm -f *.o *.so isos_loader

@@ -3,17 +3,19 @@
 #include <string.h>
 #include <argp.h>
 #include <dlfcn.h> 
+#include <unistd.h>
 #include "../include/dynloader.h"
+#include "../include/debug.h"
 
 const char *argp_program_version = "isos_loader 1.0";
 const char *argp_program_bug_address = "<adnane.elogri@univ-rennes1.fr>";
 
 static char doc[] = "ISOS Loader - loads and runs functions from shared libraries";
-
 static char args_doc[] = "LIBRARY_PATH FUNCTION_NAME [FUNCTION_NAME...]";
 
 static struct argp_option options[] = {
     {"verbose", 'v', 0, 0, "Print more info"},
+    {"debug", 'd', "LEVEL", 0, "Set debug level (0-5)"},
     {0}
 };
 
@@ -22,15 +24,20 @@ struct arguments {
     char **func_names;
     int func_count;
     int verbose;
+    int debug_level;
 };
 
-// parse options
 static error_t parse_opt(int key, char *arg, struct argp_state *state) {
     struct arguments *args = state->input;
 
     switch (key) {
         case 'v':
             args->verbose = 1;
+            break;
+        case 'd':
+            args->debug_level = atoi(arg);
+            if (args->debug_level < 0) args->debug_level = 0;
+            if (args->debug_level > 5) args->debug_level = 5;
             break;
         case ARGP_KEY_ARG:
             if (state->arg_num == 0) {
@@ -59,7 +66,23 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state) {
 
 static struct argp argp = {options, parse_opt, args_doc, doc};
 
-// functions to be loaded
+// Fonction utilitaire pour écrire sur stdout
+void write_stdout(const char* str) {
+    write(STDOUT_FILENO, str, strlen(str));
+}
+
+// Fonction pour écrire un résultat de fonction
+void write_result(const char* func_name, const char* result) {
+    write_stdout(func_name);
+    write_stdout("() => ");
+    if (result) {
+        write_stdout(result);
+    } else {
+        write_stdout("(null)");
+    }
+    write_stdout("\n");
+}
+
 const char* new_bar(){
     return "Hello from new_bar()";
 }
@@ -74,21 +97,27 @@ int main(int argc, char **argv) {
     args.func_count = 0;
     args.lib_path = NULL;
     args.func_names = NULL;
+    args.debug_level = DBG_ERROR;
     
     argp_parse(&argp, argc, argv, 0, 0, &args);
     
+    // Initialiser le système de debug
+    debug_init(args.debug_level);
+    
     if (args.verbose) {
-        printf("Loading: %s\n", args.lib_path);
+        debug_info("Debug activé");
+        debug_info("Chargement de bibliothèque");
     }
     
     void *handle = my_dlopen(args.lib_path);
     if (!handle) {
+        debug_error("Échec du chargement");
         return 1;
     }
     
     for (int i = 0; i < args.func_count; i++) {
         if (args.verbose) {
-            printf("Looking up: %s\n", args.func_names[i]);
+            debug_info("Recherche de fonction");
         }
         
         typedef const char* (*func_ptr)();
@@ -96,9 +125,9 @@ int main(int argc, char **argv) {
         
         if (func) {
             const char *result = func();
-            printf("%s() => %s\n", args.func_names[i], result);
+            write_result(args.func_names[i], result);
         } else {
-            perror("Error: function  not found\n");
+            debug_error("Fonction non trouvée");
         }
     }
     
@@ -106,6 +135,7 @@ int main(int argc, char **argv) {
         free(args.func_names);
     }
     
+    debug_info("Fermeture de la bibliothèque");
     dlclose(handle);
     
     return 0;
