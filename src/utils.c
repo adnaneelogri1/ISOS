@@ -1,5 +1,6 @@
 #include "../include/elf_parser.h"
 #include "../include/dynloader.h"
+#include "../include/debug.h"
 #include <dlfcn.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -184,13 +185,33 @@ void* my_dlopen(const char* library_path) {
 }
 
 void* my_dlsym(void* handle, const char* symbol_name) {
-    dlerror();
+    // Adresse de base de notre bibliothèque chargée
+    extern void* g_base_addr;
+    extern elf_header g_hdr;
+    extern elf_phdr* g_phdrs;
+    
+    if (!handle) {
+        debug_error("Handle invalide");
+        return NULL;
+    }
+    
+    // D'abord essayer notre propre résolution de symboles
+    void* symbol_addr = NULL;
+    if (g_base_addr && g_phdrs) {
+        if (find_dynamic_symbol(g_base_addr, &g_hdr, g_phdrs, symbol_name, &symbol_addr) == 0) {
+            debug_detail("Symbole trouvé par notre résolveur");
+            return symbol_addr;
+        }
+    }
+    
+    // Si notre résolution échoue, on utilise dlsym
+    dlerror(); // Effacer toute erreur précédente
     
     void* symbol = dlsym(handle, symbol_name);
     
     char* error = dlerror();
     if (error != NULL) {
-        perror("Error finding symbol");
+        debug_warn("dlsym a échoué");
         return NULL;
     }
     

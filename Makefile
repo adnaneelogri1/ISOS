@@ -5,7 +5,7 @@
 
 INCLUDE_DIR=./include
 
-SRC_FILES=./src/loader.c ./src/utils.c ./src/elf_parser.c ./src/load_library.c ./src/relocation.c ./src/debug.c
+SRC_FILES=./src/loader.c ./src/utils.c ./src/elf_parser.c ./src/load_library.c ./src/relocation.c ./src/debug.c ./src/symbol_parser.c
  
 # Compiler settings
 CC = gcc
@@ -37,8 +37,12 @@ relocation.o: src/relocation.c
 
 debug.o: src/debug.c
 	$(CC) $(CFLAGS) -c -o $@ $<
+
+symbol_parser.o: src/symbol_parser.c
+	$(CC) $(CFLAGS) -c -o $@ $<
+
 # Main program
-isos_loader: loader.o utils.o elf_parser.o load_library.o relocation.o debug.o
+isos_loader: loader.o utils.o elf_parser.o load_library.o relocation.o debug.o symbol_parser.o
 	$(CC) -o $@ $^ -ldl
 
 test:

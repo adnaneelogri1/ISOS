@@ -7,6 +7,10 @@
 #include <sys/mman.h>
 #include <string.h>
 
+void* g_base_addr = NULL;
+elf_header g_hdr;
+elf_phdr* g_phdrs = NULL;
+
 int load_library(int fd, elf_header* hdr, elf_phdr* phdrs) {
     size_t page_size = getpagesize();
     
@@ -143,6 +147,20 @@ int load_library(int fd, elf_header* hdr, elf_phdr* phdrs) {
                 return -1;
             }
         }
+    }
+    
+     g_base_addr = (void*)base_address;
+    memcpy(&g_hdr, hdr, sizeof(elf_header));
+    
+    // On libère l'ancien si nécessaire
+    if (g_phdrs) {
+        free(g_phdrs);
+    }
+    
+    // On copie les headers de programme
+    g_phdrs = malloc(hdr->e_phnum * sizeof(elf_phdr));
+    if (g_phdrs) {
+        memcpy(g_phdrs, phdrs, hdr->e_phnum * sizeof(elf_phdr));
     }
     
     return 0;

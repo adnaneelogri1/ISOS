@@ -55,6 +55,16 @@ typedef struct {
     int64_t  r_addend;
 } Elf64_Rela;
 
+typedef struct {
+    uint32_t    st_name;
+    uint8_t     st_info;
+    uint8_t     st_other;
+    uint16_t    st_shndx;
+    uint64_t    st_value;
+    uint64_t    st_size;
+} Elf64_Sym;
+
+
 int read_elf_header(const char* filename, elf_header* hdr);
 int read_program_headers(int fd, elf_header* hdr, elf_phdr** phdrs);
 int check_valid_lib(elf_header* hdr);
@@ -62,5 +72,6 @@ void print_header(elf_header* hdr);
 void print_phdr(elf_phdr* phdr, int idx);
 int load_library(int fd, elf_header* hdr, elf_phdr* phdrs);
 int perform_relocations(void* base_addr, elf_header* hdr, elf_phdr* phdrs);
-
+int find_dynamic_symbol(void* base_addr, elf_header* hdr, elf_phdr* phdrs, 
+                    const char* name, void** symbol_addr);
 #endif

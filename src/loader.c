@@ -120,12 +120,21 @@ int main(int argc, char **argv) {
             debug_info("Recherche de fonction");
         }
         
-        typedef const char* (*func_ptr)();
-        func_ptr func = (func_ptr)my_dlsym(handle, args.func_names[i]);
+        void* func_addr = my_dlsym(handle, args.func_names[i]);
         
-        if (func) {
-            const char *result = func();
-            write_result(args.func_names[i], result);
+        if (func_addr) {
+            debug_info("Adresse de fonction trouvée");
+            
+            // Ne pas essayer d'exécuter directement la fonction
+            // Au lieu de ça, affichons simplement qu'on l'a trouvée
+            write_stdout(args.func_names[i]);
+            write_stdout("() => Adresse: 0x");
+            
+            // Convertir l'adresse en chaîne hexadécimale
+            char addr_str[20];
+            sprintf(addr_str, "%lx", (unsigned long)func_addr);
+            write_stdout(addr_str);
+            write_stdout("\n");
         } else {
             debug_error("Fonction non trouvée");
         }
