@@ -7,6 +7,7 @@
 #include <sys/mman.h>
 #include <string.h>
 
+// Variables globales pour stocker l'état de la bibliothèque chargée
 void* g_base_addr = NULL;
 elf_header g_hdr;
 elf_phdr* g_phdrs = NULL;
@@ -14,6 +15,7 @@ elf_phdr* g_phdrs = NULL;
 int load_library(int fd, elf_header* hdr, elf_phdr* phdrs) {
     size_t page_size = getpagesize();
     
+    // Trouver l'étendue des segments de chargement
     uint64_t min_addr = UINT64_MAX;
     uint64_t max_addr = 0;
     int load_segments = 0;
@@ -36,11 +38,13 @@ int load_library(int fd, elf_header* hdr, elf_phdr* phdrs) {
         return -1;
     }
     
+    // Aligner sur la taille de page
     uint64_t base_offset = min_addr & ~(page_size - 1);
     
     size_t total_size = max_addr - base_offset;
     total_size = (total_size + page_size - 1) & ~(page_size - 1);
     
+    // Réserver la mémoire (non accessible initialement)
     void* base_addr = mmap(
         NULL,
         total_size,
@@ -55,9 +59,11 @@ int load_library(int fd, elf_header* hdr, elf_phdr* phdrs) {
         return -1;
     }
     
+    // Calculer l'adresse de base virtuelle
     uint64_t base_address = (uint64_t)base_addr - base_offset;
     debug_info("Adresse de base pour chargement");
     
+    // Charger tous les segments PT_LOAD
     for (int i = 0; i < hdr->e_phnum; i++) {
         if (phdrs[i].p_type == PT_LOAD) {
             uint64_t seg_vaddr = phdrs[i].p_vaddr;
@@ -80,6 +86,7 @@ int load_library(int fd, elf_header* hdr, elf_phdr* phdrs) {
             
             debug_detail("Chargement segment PT_LOAD");
             
+            // Mapper la partie du fichier en mémoire
             if (file_size > 0) {
                 void* segment_addr = mmap(
                     load_addr,
@@ -97,18 +104,21 @@ int load_library(int fd, elf_header* hdr, elf_phdr* phdrs) {
                 }
             }
             
+            // Initialiser la section BSS (mémoire sans fichier)
             if (mem_size > file_size) {
                 void* bss_start = (void*)((char*)load_addr + offset_in_page + file_size);
                 size_t bss_size = mem_size - file_size;
                 
                 debug_detail("Initialisation BSS");
                 
+                // S'assurer qu'on peut écrire dans cette zone mémoire
                 if (mprotect(load_addr, aligned_size, PROT_READ | PROT_WRITE) != 0) {
                     debug_error("mprotect pour BSS a échoué");
                     munmap(base_addr, total_size);
                     return -1;
                 }
                 
+                // Mettre à zéro la section BSS
                 memset(bss_start, 0, bss_size);
             }
         }
@@ -134,6 +144,7 @@ int load_library(int fd, elf_header* hdr, elf_phdr* phdrs) {
             size_t raw_size = phdrs[i].p_memsz + offset_in_page;
             size_t aligned_size = (raw_size + page_size - 1) & ~(page_size - 1);
             
+            // Déterminer les permissions finales
             int prot = 0;
             if (phdrs[i].p_flags & PF_R) prot |= PROT_READ;
             if (phdrs[i].p_flags & PF_W) prot |= PROT_WRITE;
@@ -149,7 +160,8 @@ int load_library(int fd, elf_header* hdr, elf_phdr* phdrs) {
         }
     }
     
-     g_base_addr = (void*)base_address;
+    // Enregistrer l'état global de la bibliothèque
+    g_base_addr = (void*)base_address;
     memcpy(&g_hdr, hdr, sizeof(elf_header));
     
     // On libère l'ancien si nécessaire

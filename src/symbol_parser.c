@@ -14,6 +14,7 @@
 #define ELF64_ST_BIND(i)   ((i)>>4)
 #define ELF64_ST_TYPE(i)   ((i)&0xf)
 
+// Au lieu de chercher via la table d'exports, cherchons via la table de symboles dynamiques
 int find_dynamic_symbol(void* base_addr, elf_header* hdr, elf_phdr* phdrs, 
                     const char* name, void** symbol_addr) {
     debug_detail("Recherche du symbole dans la table dynamique");
@@ -63,7 +64,7 @@ int find_dynamic_symbol(void* base_addr, elf_header* hdr, elf_phdr* phdrs,
     }
     
     // Parcourir les symboles (limité à un nombre raisonnable)
-    for (i = 0; i < 10000; i++) {
+    for (i = 0; i < 1000; i++) {
         Elf64_Sym sym = symtab[i];
         
         if (sym.st_name == 0) {
@@ -92,8 +93,9 @@ int find_dynamic_symbol(void* base_addr, elf_header* hdr, elf_phdr* phdrs,
             continue;
         }
         
-        if (strcmp(sym_name, name) == 0) {
-            // Trouvé!
+       if (strncmp(sym_name, name, strlen(name)) == 0 && 
+            (sym_name[strlen(name)] == '\0' || sym_name[strlen(name)] == '@')) {
+            // Trouvé! (either exact match or versioned symbol)
             debug_info("Fonction trouvée dans la table de symboles");
             *symbol_addr = (void*)((char*)base_addr + sym.st_value);
             return 0;
