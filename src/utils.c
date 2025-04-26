@@ -1,6 +1,6 @@
-#include "../include/elf_parser.h"
-#include "../include/dynloader.h"
-#include "../include/debug.h"
+#include "elf_parser.h"
+#include "dynloader.h"
+#include "debug.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <fcntl.h>
@@ -136,51 +136,65 @@ void* my_dlopen(const char* library_path) {
         return NULL;
     }
     
-    elf_header hdr;
-    if (read_elf_header(library_path, &hdr) != 0) {
-        perror("Error reading header");
+    // Allocate handle structure
+    lib_handle_t* handle = (lib_handle_t*)malloc(sizeof(lib_handle_t));
+    if (!handle) {
+        perror("Failed to allocate memory for handle");
         return NULL;
     }
     
-    if (check_valid_lib(&hdr) != 0) {
+    // Initialize handle
+    memset(handle, 0, sizeof(lib_handle_t));
+    
+    if (read_elf_header(library_path, &handle->hdr) != 0) {
+        perror("Error reading header");
+        free(handle);
+        return NULL;
+    }
+    
+    if (check_valid_lib(&handle->hdr) != 0) {
         perror("Error: not a valid library");
+        free(handle);
         return NULL;
     }
     
     int fd = open(library_path, O_RDONLY);
     if (fd < 0) {
         perror("open failed");
+        free(handle);
         return NULL;
     }
     
-    elf_phdr* phdrs = NULL;
-    if (read_program_headers(fd, &hdr, &phdrs) != 0) {
+    if (read_program_headers(fd, &handle->hdr, &handle->phdrs) != 0) {
         perror("Failed to read program headers");
         close(fd);
+        free(handle);
         return NULL;
     }
     
-    if (load_library(fd, &hdr, phdrs) != 0) {
+    // Modified to store base_addr in the handle
+    void* base_addr = NULL;
+    if (load_library(fd, &handle->hdr, handle->phdrs, &base_addr) != 0) {
         perror("Failed to load library");
-        free(phdrs);
+        free(handle->phdrs);
         close(fd);
+        free(handle);
         return NULL;
     }
+    handle->base_addr = base_addr;
     
-    if (validate_load_segments(library_path, &hdr) != 0) {
+    if (validate_load_segments(library_path, &handle->hdr) != 0) {
         fprintf(stderr, "Error: PT_LOAD segment validation failed\n");
-        free(phdrs);
+        free(handle->phdrs);
         close(fd);
+        free(handle);
         return NULL;
     }
     
-    free(phdrs);
     close(fd);
     
-    // On retourne juste un handle bidon (non NULL)
-    return (void*)0x42424242;
+    return (void*)handle;
 }
-
 void* my_dlsym(void* handle, const char* symbol_name) {
     // On vérifie juste que le handle est valide (non NULL)
     if (!handle) {
@@ -191,27 +205,50 @@ void* my_dlsym(void* handle, const char* symbol_name) {
     // Adresse de base de notre bibliothèque chargée
     extern void* g_base_addr;
     extern elf_header g_hdr;
-    extern elf_phdr* g_phdrs;
+    extern elf_phdr* g_phdrs; //verifier extern
     
-    // Recherche du symbole dans la table de symboles dynamiques
-    void* symbol_addr = NULL;
-    if (g_base_addr && g_phdrs) {
-        if (find_dynamic_symbol(g_base_addr, &g_hdr, g_phdrs, symbol_name, &symbol_addr) == 0) {
-            debug_detail("Symbole trouvé par notre résolveur");
-            return symbol_addr;
+    // 1. Si e_entry est non nul, essayer d'utiliser la table de symboles personnalisée
+    if (g_base_addr && g_hdr.e_entry != 0) {
+        // Définir le type de notre structure de symbole
+        typedef struct {
+            const char* name;
+            void* addr;
+        } symbol_entry;//je le me que soit disponible
+        
+        // Définir le type de la fonction get_symbol_table
+        typedef symbol_entry* (*get_table_func)();
+        
+        // Calculer l'adresse de la fonction get_symbol_table
+        get_table_func get_table = (get_table_func)((char*)g_base_addr + g_hdr.e_entry);
+        
+        // Appeler get_symbol_table pour obtenir notre table
+        symbol_entry* table = get_table();
+        
+        // Parcourir la table de symboles
+        for (int i = 0; table[i].name != NULL; i++) {
+            if (strcmp(table[i].name, symbol_name) == 0) {
+                // On a trouvé le symbole! 
+                // Mais l'adresse est relative, il faut ajouter l'adresse de base
+                if ((uintptr_t)table[i].addr < (uintptr_t)g_base_addr) {
+                    // Si l'adresse est déjà un offset par rapport à la base
+                    return (void*)((char*)g_base_addr + (uintptr_t)table[i].addr);
+                } else {
+                    // Si l'adresse est déjà absolue (cas où la relocation a déjà été effectuée)
+                    return table[i].addr;
+                }      
+      }
         }
     }
-    
-    // Recherche dans les exports du loader
-    extern const char* new_foo();
-    extern const char* new_bar();
-    
-    if (strcmp(symbol_name, "new_foo") == 0) {
-        return (void*)new_foo;
-    } else if (strcmp(symbol_name, "new_bar") == 0) {
-        return (void*)new_bar;
-    }
-    
-    debug_warn("Symbole non trouvé");
+   
     return NULL;
+}
+
+int my_set_plt_resolve(void* handle, void* resolve_table) {
+    if (!handle) {
+        debug_error("Invalid handle");
+        return -1;
+    }
+    lib_handle_t* lib_handle = (lib_handle_t*)handle;
+    lib_handle->plt_resolve_table = resolve_table;
+    return 0;
 }

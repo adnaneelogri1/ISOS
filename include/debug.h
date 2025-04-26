@@ -15,6 +15,9 @@ extern int debug_level;
 // Initialiser le niveau de debug
 void debug_init(int level);
 
+// Fonction de debug avec format (comme printf)
+void debug_printf(int level, const char* format, ...);
+
 // Fonctions de log pour chaque niveau
 void debug_error(const char* msg);
 void debug_warn(const char* msg);  

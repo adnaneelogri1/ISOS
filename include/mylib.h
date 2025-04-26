@@ -17,4 +17,9 @@ const char* foo_imported();
 extern const char* new_foo();
 extern const char* new_bar();
 
+
+//chall7 
+// Exported symbol table
+extern const char* imported_symbols[];
+
 #endif

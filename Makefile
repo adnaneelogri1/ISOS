@@ -2,26 +2,25 @@
 # This Makefile is for the ISOS project
 #
 
-INCLUDE_DIR=./include
+INCLUDE_DIR= ./include
 
 SRC_FILES=./src/loader.c ./src/utils.c ./src/elf_parser.c ./src/load_library.c ./src/relocation.c ./src/debug.c ./src/symbol_parser.c
  
 # Compiler settings
 CC = gcc
-CFLAGS = -Wall -I$(INCLUDE_DIR) -g
-LDFLAGS = -shared
+CFLAGS = -Wall -I$(INCLUDE_DIR) -g  
+LDFLAGS = -shared -nostdlib -O3 
 
 # Main targets
 all: libmylib.so libmylib_hidden.so isos_loader
 
 # Simple shared library
 libmylib.so: src/mylib.c
-	$(CC) $(CFLAGS) -fPIC -shared -o $@ $<
+	$(CC) $(CFLAGS) $(LDFLAGS) -e loader_info -o $@ $<
 
 # Shared library with hidden visibility
 libmylib_hidden.so: src/mylib.c
-	$(CC) $(CFLAGS) -fPIC -shared -fvisibility=hidden -o $@ $<
-
+	$(CC) $(CFLAGS) $(LDFLAGS)  -shared -fvisibility=hidden -e loader_info -fPIC   -o $@ $<
 # Compilation des fichiers sources en objets
 loader.o: src/loader.c
 	$(CC) $(CFLAGS) -c -o $@ $<

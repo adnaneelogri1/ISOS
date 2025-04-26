@@ -1,5 +1,5 @@
-#include "../include/elf_parser.h"
-#include "../include/debug.h"
+#include "elf_parser.h"
+#include "debug.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -12,7 +12,7 @@ void* g_base_addr = NULL;
 elf_header g_hdr;
 elf_phdr* g_phdrs = NULL;
 
-int load_library(int fd, elf_header* hdr, elf_phdr* phdrs) {
+int load_library(int fd, elf_header* hdr, elf_phdr* phdrs, void** out_base_addr) {
     size_t page_size = getpagesize();
     
     // Trouver l'étendue des segments de chargement
@@ -174,6 +174,6 @@ int load_library(int fd, elf_header* hdr, elf_phdr* phdrs) {
     if (g_phdrs) {
         memcpy(g_phdrs, phdrs, hdr->e_phnum * sizeof(elf_phdr));
     }
-    
+        *out_base_addr = (void*)base_address;
     return 0;
 }

@@ -1,6 +1,12 @@
 {
     "files.associations": {
         "stdlib.h": "c",
-        "dynloader.h": "c"
+        "dynloader.h": "c",
+        "elf_parser.h": "c",
+        "stddef.h": "c",
+        "mylib.h": "c",
+        "aarch64.h": "c",
+        "isos-support.h": "c",
+        "loader.h": "c"
     }
 }

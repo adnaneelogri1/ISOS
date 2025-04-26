@@ -1,4 +1,4 @@
-#include "../include/elf_parser.h"
+#include "elf_parser.h"
 #include <stdio.h>
 #include <unistd.h>
 #include <fcntl.h>

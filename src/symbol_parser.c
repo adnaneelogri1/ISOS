@@ -1,5 +1,5 @@
-#include "../include/elf_parser.h"
-#include "../include/debug.h"
+#include "elf_parser.h"
+#include "debug.h"
 #include <string.h>
 #include <stdlib.h>
 
@@ -14,10 +14,21 @@
 #define ELF64_ST_BIND(i)   ((i)>>4)
 #define ELF64_ST_TYPE(i)   ((i)&0xf)
 
-// Au lieu de chercher via la table d'exports, cherchons via la table de symboles dynamiques
+// Tags pour la section dynamic
+#define DT_NULL     0
+#define DT_STRTAB   5
+#define DT_SYMTAB   6
+#define DT_RELA     7
+#define DT_RELASZ   8
+
 int find_dynamic_symbol(void* base_addr, elf_header* hdr, elf_phdr* phdrs, 
                     const char* name, void** symbol_addr) {
     debug_detail("Recherche du symbole dans la table dynamique");
+    
+    if (!base_addr || !hdr || !phdrs || !name || !symbol_addr) {
+        debug_error("Arguments invalides pour find_dynamic_symbol");
+        return -1;
+    }
     
     // Trouver le segment dynamique
     elf_phdr* dyn_seg = NULL;
@@ -40,21 +51,30 @@ int find_dynamic_symbol(void* base_addr, elf_header* hdr, elf_phdr* phdrs,
     
     // Parcourir la section dynamique
     uint64_t* dynamic = (uint64_t*)((char*)base_addr + dyn_seg->p_vaddr);
-    int i = 0;
+    if (!dynamic) {
+        debug_error("Pointeur de section dynamique invalide");
+        return -1;
+    }
     
-    while (dynamic[i] != 0) {
+    //debug_detail("Section dynamique trouvée à l'adresse relative 0x%lx", dyn_seg->p_vaddr);
+    
+    int i = 0;
+    // Limiter la recherche pour éviter une boucle infinie
+    int max_entries = 100;
+    
+    while (i < max_entries * 2 && dynamic[i] != DT_NULL) {
         uint64_t tag = dynamic[i++];
         uint64_t val = dynamic[i++];
         
-        debug_verbose("Analyse entrée dynamique");
+        //debug_verbose("Entrée dynamique trouvée: tag=%lu, val=0x%lx", tag, val);
         
-        if (tag == 6) { // DT_SYMTAB
-            symtab = (Elf64_Sym*)((char*)base_addr + val);
-            debug_detail("Table de symboles trouvée");
+        if (tag == DT_SYMTAB) {
+            symtab = (Elf64_Sym*)((char*)base_addr + val); 
+            //debug_detail("Table de symboles trouvée à l'offset 0x%lx", val);
         }
-        else if (tag == 5) { // DT_STRTAB
+        else if (tag == DT_STRTAB) {
             strtab = (char*)base_addr + val;
-            debug_detail("Table de chaînes trouvée");
+           // debug_detail("Table de chaînes trouvée à l'offset 0x%lx", val);
         }
     }
     
@@ -63,9 +83,20 @@ int find_dynamic_symbol(void* base_addr, elf_header* hdr, elf_phdr* phdrs,
         return -1;
     }
     
+    //debug_detail("Début de la recherche du symbole: %s", name);
+    
     // Parcourir les symboles (limité à un nombre raisonnable)
-    for (i = 0; i < 1000; i++) {
-        Elf64_Sym sym = symtab[i];
+    int max_symbols = 100;  // Limite raisonnable
+    for (i = 0; i < max_symbols; i++) {
+        // Vérifions si l'adresse est valide avant d'y accéder
+        Elf64_Sym* sym_ptr = &symtab[i];
+        
+        if (!sym_ptr) {
+            debug_error("Adresse de symbole invalide");
+            break;
+        }
+        
+        Elf64_Sym sym = *sym_ptr;
         
         if (sym.st_name == 0) {
             // Symbole sans nom, continuer
@@ -73,40 +104,51 @@ int find_dynamic_symbol(void* base_addr, elf_header* hdr, elf_phdr* phdrs,
         }
         
         // Vérification de sécurité avant d'accéder à strtab
-        if (sym.st_name >= 1000000) {  // Limite arbitraire raisonnable
-            debug_warn("Index de chaîne suspect, ignoré");
+        if (sym.st_name >= 10000) {  // Limite plus raisonnable
+            //debug_warn("Index de chaîne suspect (%u), ignoré", sym.st_name);
             continue;
         }
         
+        // Vérifier que strtab+st_name est une adresse valide
         char* sym_name = strtab + sym.st_name;
+        if (!sym_name) {
+            debug_error("Adresse de nom de symbole invalide");
+            continue;
+        }
         
-        // Vérification basique que le nom est valide
-        int valid = 1;
-        for (int j = 0; j < 100 && sym_name[j] != '\0'; j++) {
-            if (sym_name[j] < 32 || sym_name[j] > 126) { // Caractères non imprimables
-                valid = 0;
+        // Essayons d'abord de voir si le premier caractère est valide
+        if (sym_name[0] < 32 || sym_name[0] > 126) {
+            //debug_verbose("Nom de symbole invalide, premier caractère: %d", sym_name[0]);
+            continue;
+        }
+        
+        // Nous avons au moins un caractère valide, vérifions le reste plus prudemment
+        size_t name_len = strlen(name);
+        int match = 1;
+        
+        // Vérifier caractère par caractère sans dépasser la taille de name
+        for (size_t j = 0; j < name_len; j++) {
+            if (sym_name[j] == '\0' || sym_name[j] != name[j]) {
+                match = 0;
                 break;
             }
         }
         
-        if (!valid) {
-            continue;
-        }
-        
-       if (strncmp(sym_name, name, strlen(name)) == 0 && 
-            (sym_name[strlen(name)] == '\0' || sym_name[strlen(name)] == '@')) {
-            // Trouvé! (either exact match or versioned symbol)
-            debug_info("Fonction trouvée dans la table de symboles");
+        // Vérifier que le symbole se termine correctement
+        if (match && (sym_name[name_len] == '\0' || sym_name[name_len] == '@')) {
+            //debug_info("Fonction '%s' trouvée dans la table de symboles, valeur=0x%lx", name, sym.st_value);
+                       
+            // Vérifier que l'adresse calculée est valide
+            if (sym.st_value == 0) {
+                debug_error("Symbole trouvé mais avec une valeur nulle");
+                return -1;
+            }
+            
             *symbol_addr = (void*)((char*)base_addr + sym.st_value);
             return 0;
         }
-        
-        // Si on atteint un symbole sans nom après un certain nombre,
-        // on peut supposer qu'on a atteint la fin
-        if (i > 100 && sym.st_name == 0) {
-            break;
-        }
     }
-    debug_warn("Symbole non trouvé");
+    
+    //debug_warn("Symbole '%s' non trouvé après %d entrées", name, max_symbols);
     return -1;
 }

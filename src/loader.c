@@ -3,8 +3,10 @@
     #include <string.h>
     #include <argp.h>
     #include <unistd.h>
-    #include "../include/dynloader.h"
-    #include "../include/debug.h"
+    #include <stddef.h>
+    #include "dynloader.h"
+    #include "debug.h"
+    #include "loader.h"
 
     const char *argp_program_version = "isos_loader 1.0";
     const char *argp_program_bug_address = "<adnane.elogri@univ-rennes1.fr>";
@@ -25,6 +27,16 @@
         int verbose;
         int debug_level;
     };
+
+       
+  // Notre table de symboles exportée
+    symbol_entry imported_fonction[] = {
+        {"new_foo", (void*)new_foo},
+        {"new_bar", (void*)new_bar},
+        {NULL, NULL} // Marque la fin de la table
+    };
+
+
 
     static error_t parse_opt(int key, char *arg, struct argp_state *state) {
         struct arguments *args = state->input;
@@ -96,13 +108,23 @@
             debug_info("Debug activé");
             debug_info("Chargement de bibliothèque");
         }
-        
+
         void *handle = my_dlopen(args.lib_path);
         if (!handle) {
             debug_error("Échec du chargement");
             return 1;
         }
-        
+            // Set up PLT resolution for the library
+        if (my_set_plt_resolve(handle, imported_fonction) != 0) {
+            debug_error("Failed to set PLT resolver");
+            return 1;
+        }
+
+        void** loader_handle_tmp = loader_info.loader_handle;
+        *loader_handle_tmp = handle;
+        void** isos_trampoline_tmp = loader_info.isos_trampoline;
+        *isos_trampoline_tmp = isos_trampoline;
+
         for (int i = 0; i < args.func_count; i++) {
             if (args.verbose) {
                 debug_info("Recherche de fonction");
@@ -145,3 +167,142 @@
         
         return 0;
     }
+
+
+/**
+ * @brief The function isos_trampoline() is called by the PLT section
+ * entry for each imported symbol inside the DL library.
+*/
+void isos_trampoline();
+asm(".pushsection .text,\"ax\",\"progbits\""  "\n"
+    "isos_trampoline:"                        "\n"
+    POP_S(REG_ARG_1)                          "\n"
+    POP_S(REG_ARG_2)                          "\n"
+    PUSH_STACK_STATE                          "\n"
+    CALL(loader_plt_resolver)                 "\n"
+    POP_STACK_STATE                           "\n"
+    JMP_REG(REG_RET)                          "\n"
+    ".popsection"                             "\n");
+
+
+// Function to get symbol name from ID
+const char* get_symbol_name_by_id(const char** imported_symbols, int sym_id) {
+    if (!imported_symbols) {
+        debug_error("Imported symbols table is NULL");
+        return NULL;
+    }
+    
+    // Check if symbol ID is valid
+    if (sym_id < 0) {
+        debug_error("Invalid symbol ID");
+        return NULL;
+    }
+    
+    return imported_symbols[sym_id];
+}
+// Function to find function address by name in the resolve table
+void* find_function_by_name(symbol_entry* exported_symbols, const char* name) {
+    if (!exported_symbols || !name) {
+        debug_error("Invalid exported symbols table or name");
+        return NULL;
+    }
+    
+    // Search for the symbol in the table
+    int i = 0;
+    while (exported_symbols[i].name != NULL) {
+        if (strcmp(exported_symbols[i].name, name) == 0) {
+            debug_detail("Found function address for symbol");
+            return exported_symbols[i].addr;
+        }
+        i++;
+    }
+    
+    debug_error("Symbol not found in exported symbols table");
+    return NULL;
+}// The main PLT resolver function
+void* loader_plt_resolver(void* handle, int sym_id) {
+    if (!handle) {
+        debug_error("Invalid handle in PLT resolver");
+        return NULL;
+    }
+    
+    // Cast handle to our loader_info structure
+    lib_handle_t* loader_info = (lib_handle_t*)handle;
+    
+    // Step 1: Get symbol name from ID using the imported symbols table
+    const char* sym_name = get_symbol_name_by_id(loader_info->imported_symbols, sym_id);
+    if (!sym_name) {
+        debug_error("Could not resolve symbol name");
+        return NULL;
+    }
+    
+    debug_info("Resolving symbol name");
+    
+    // Step 2: Find function address by name in the exported symbols table
+    void* func_addr = find_function_by_name(loader_info->plt_resolve_table, sym_name);
+    if (!func_addr) {
+        debug_error("Could not find function address");
+        return NULL;
+    }
+    
+    return func_addr;
+}
+    // Add this function to loader.c
+void* loader_plt_resolver(void* handle, int sym_id) {
+    if (!handle) {
+        debug_error("Invalid handle in PLT resolver");
+        return NULL;
+    }
+    
+    lib_handle_t* lib_handle = (lib_handle_t*)handle;
+    
+    // Get imported symbols table from the library
+    const char** imported_symbols = NULL;
+    void* sym_addr = NULL;
+    
+    if (find_dynamic_symbol(lib_handle->base_addr, &lib_handle->hdr, 
+                          lib_handle->phdrs, "imported_symbols", 
+                          &sym_addr) != 0 || !sym_addr) {
+        debug_error("Failed to find imported_symbols table");
+        return NULL;
+    }
+    
+    imported_symbols = (const char**)sym_addr;
+    
+    if (!imported_symbols || sym_id <= 0) {
+        debug_error("Invalid symbol ID or imported symbols table");
+        return NULL;
+    }
+    
+    const char* sym_name = imported_symbols[sym_id];
+    debug_info("Resolving PLT symbol");
+    
+    // Find symbol in our PLT resolve table
+    symbol_entry* resolve_table = (symbol_entry*)lib_handle->plt_resolve_table;
+    if (!resolve_table) {
+        debug_error("PLT resolve table not set");
+        return NULL;
+    }
+    
+    // Search for the symbol
+    int i = 0;
+    while (resolve_table[i].name != NULL) {
+        if (strcmp(resolve_table[i].name, sym_name) == 0) {
+            debug_detail("Resolved PLT symbol");
+            return resolve_table[i].addr;
+        }
+        i++;
+    }
+    
+    debug_error("Symbol not found in PLT resolve table");
+    return NULL;
+}
+int my_set_plt_resolve(void* handle, void* resolve_table) {
+    if (!handle) {
+        debug_error("Invalid handle");
+        return -1;
+    }
+    lib_handle_t* lib_handle = (lib_handle_t*)handle;
+    lib_handle->plt_resolve_table = resolve_table;
+    return 0;
+}

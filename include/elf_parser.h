@@ -20,6 +20,7 @@
 #define PF_R        0x4
 
 #define R_X86_64_RELATIVE 8
+#define R_ACCH64_RELATIVE 1027
 
 typedef struct {
     unsigned char   e_ident[16];
@@ -70,7 +71,8 @@ int read_program_headers(int fd, elf_header* hdr, elf_phdr** phdrs);
 int check_valid_lib(elf_header* hdr);
 void print_header(elf_header* hdr);
 void print_phdr(elf_phdr* phdr, int idx);
-int load_library(int fd, elf_header* hdr, elf_phdr* phdrs);
+
+int load_library(int fd, elf_header* hdr, elf_phdr* phdrs, void** out_base_addr);
 int perform_relocations(void* base_addr, elf_header* hdr, elf_phdr* phdrs);
 int find_dynamic_symbol(void* base_addr, elf_header* hdr, elf_phdr* phdrs, 
                     const char* name, void** symbol_addr);
