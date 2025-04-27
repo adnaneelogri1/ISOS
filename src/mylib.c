@@ -3,19 +3,18 @@
 #include "isos-support.h"
 #include "loader.h"
 
+// Définir les variables comme des pointeurs globaux avec visibilité globale
+void *loader_handle  = NULL;
+void *isos_trampoline = NULL;
+
 // Create PLT entries for imported functions
 PLT_BEGIN
 PLT_ENTRY(0, new_foo)
 PLT_ENTRY(1, new_bar)
-// Symbols needed by PLT_BEGIN - will be set by the loader
-void *loader_handle = NULL;
-void *isos_trampoline = NULL;
 
     const char* new_bar();
     const char* new_foo();
-// Integer identifiers for imported symbols
-#define SYM_NEW_FOO 0
-#define SYM_NEW_BAR 1
+
 // Imported symbol table - array of strings indexed by symbol ID
 const char* imported_symbols[] = {
     "new_foo", // ID 0 - SYM_NEW_FOO
@@ -47,12 +46,14 @@ symbol_entry exported_symbols[] = {
 
 
 // Initialize the loader info
+// Initialize the loader info with global visibility
 loader_info_t loader_info = {
     .exported_symbols = exported_symbols,
-    .imported_symbols = imported_symbols,
+    .imported_symbols = imported_symbols, 
     .loader_handle = &loader_handle,
     .isos_trampoline = &isos_trampoline
 };
+
 
 // Cette fonction sera utilisée comme point d'entrée (e_entry)
 symbol_entry* get_symbol_table() {
@@ -69,5 +70,3 @@ const char* bar_imported() {
 const char* foo_imported() {
     return new_foo();
 }
-
-

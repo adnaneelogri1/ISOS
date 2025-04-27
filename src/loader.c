@@ -1,173 +1,18 @@
+
     #include <stdio.h>
     #include <stdlib.h>
     #include <string.h>
     #include <argp.h>
     #include <unistd.h>
     #include <stddef.h>
+    #include "loader.h"
     #include "dynloader.h"
     #include "debug.h"
-    #include "loader.h"
+    #include "isos-support.h"
 
-    const char *argp_program_version = "isos_loader 1.0";
-    const char *argp_program_bug_address = "<adnane.elogri@univ-rennes1.fr>";
-
-    static char doc[] = "ISOS Loader - loads and runs functions from shared libraries";
-    static char args_doc[] = "LIBRARY_PATH FUNCTION_NAME [FUNCTION_NAME...]";
-
-    static struct argp_option options[] = {
-        {"verbose", 'v', 0, 0, "Print more info"},
-        {"debug", 'd', "LEVEL", 0, "Set debug level (0-5)"},
-        {0}
-    };
-
-    struct arguments {
-        char *lib_path;
-        char **func_names;
-        int func_count;
-        int verbose;
-        int debug_level;
-    };
-
-       
-  // Notre table de symboles exportée
-    symbol_entry imported_fonction[] = {
-        {"new_foo", (void*)new_foo},
-        {"new_bar", (void*)new_bar},
-        {NULL, NULL} // Marque la fin de la table
-    };
-
-
-
-    static error_t parse_opt(int key, char *arg, struct argp_state *state) {
-        struct arguments *args = state->input;
-
-        switch (key) {
-            case 'v':
-                args->verbose = 1;
-                break;
-            case 'd':
-                args->debug_level = atoi(arg);
-                if (args->debug_level < 0) args->debug_level = 0;
-                if (args->debug_level > 5) args->debug_level = 5;
-                break;
-            case ARGP_KEY_ARG:
-                if (state->arg_num == 0) {
-                    args->lib_path = arg;
-                } else {
-                    if (state->arg_num == 1) {
-                        args->func_names = malloc(sizeof(char*) * (state->argc - 1));
-                        if (!args->func_names) {
-                            argp_usage(state);
-                            return ENOMEM;
-                        }
-                    }
-                    args->func_names[args->func_count++] = arg;
-                }
-                break;
-            case ARGP_KEY_END:
-                if (state->arg_num < 2) {
-                    argp_usage(state);
-                }
-                break;
-            default:
-                return ARGP_ERR_UNKNOWN;
-        }
-        return 0;
-    }
-
-    static struct argp argp = {options, parse_opt, args_doc, doc};
-
-    // Fonction utilitaire pour écrire sur stdout
-    void write_stdout(const char* str) {
-        write(STDOUT_FILENO, str, strlen(str));
-    }
-
-    // Fonctions exportées pour les imports
-    const char* new_bar(){
-        return "Hello from new_bar()";
-    }
-    const char* new_foo(){
-        return "Hello from new_foo()";
-    }
-
-    int main(int argc, char **argv) {
-        struct arguments args;
-        
-        args.verbose = 0;
-        args.func_count = 0;
-        args.lib_path = NULL;
-        args.func_names = NULL;
-        args.debug_level = DBG_ERROR;
-        
-        argp_parse(&argp, argc, argv, 0, 0, &args);
-        
-        // Initialiser le système de debug
-        debug_init(args.debug_level);
-        
-        if (args.verbose) {
-            debug_info("Debug activé");
-            debug_info("Chargement de bibliothèque");
-        }
-
-        void *handle = my_dlopen(args.lib_path);
-        if (!handle) {
-            debug_error("Échec du chargement");
-            return 1;
-        }
-            // Set up PLT resolution for the library
-        if (my_set_plt_resolve(handle, imported_fonction) != 0) {
-            debug_error("Failed to set PLT resolver");
-            return 1;
-        }
-
-        void** loader_handle_tmp = loader_info.loader_handle;
-        *loader_handle_tmp = handle;
-        void** isos_trampoline_tmp = loader_info.isos_trampoline;
-        *isos_trampoline_tmp = isos_trampoline;
-
-        for (int i = 0; i < args.func_count; i++) {
-            if (args.verbose) {
-                debug_info("Recherche de fonction");
-            }
-            
-            void* func_addr = my_dlsym(handle, args.func_names[i]);
-            if (func_addr) {
-            debug_info("Adresse de fonction trouvée");
-            
-            // Afficher l'adresse de la fonction
-            write_stdout(args.func_names[i]);
-            write_stdout("() => Adresse: 0x");
-            
-            // Convertir l'adresse en chaîne hexadécimale
-            char addr_str[20];
-            sprintf(addr_str, "%lx", (unsigned long)func_addr);
-            write_stdout(addr_str);
-            write_stdout("\n");
-            
-            // Cast du pointeur vers un type de fonction et appel
-            const char* (*func_ptr)() = (const char* (*)())func_addr;
-            const char* result = func_ptr();
-            
-            // Afficher le résultat de l'appel
-            write_stdout("Résultat de l'appel: ");
-            write_stdout(result);
-            write_stdout("\n");
-        }  else {
-                // FIX: Afficher un message d'erreur approprié au lieu de segfault
-                debug_error("Fonction non trouvée");
-                fprintf(stderr, "ERROR: Function '%s' not found in library\n", args.func_names[i]);
-            }
-        }
-        
-        if (args.func_names) {
-            free(args.func_names);
-        }
-        
-        debug_info("Fermeture de la bibliothèque");
-        
-        return 0;
-    }
-
+#define DT_NULL     0
+#define DT_STRTAB   5
+#define DT_SYMTAB   6
 
 /**
  * @brief The function isos_trampoline() is called by the PLT section
@@ -185,6 +30,93 @@ asm(".pushsection .text,\"ax\",\"progbits\""  "\n"
     ".popsection"                             "\n");
 
 
+/**
+ * @param handler  : the loader handler returned by my_dlopen().
+ * @param import_id: the identifier of the function to be called
+ *                   from the imported symbol table.
+ * @return the address of the function to be called by the trampoline.
+*/
+/**
+ * @param handler  : the loader handler returned by my_dlopen().
+ * @param import_id: the identifier of the function to be called
+ *                   from the imported symbol table.
+ * @return the address of the function to be called by the trampoline.
+*/
+void* loader_plt_resolver(void* handle, int sym_id) {
+    if (!handle) {
+        debug_error("Invalid handle in PLT resolver");
+        return NULL;
+    }
+    
+    // Cast handle to our loader_info structure
+    lib_handle_t* loader_info = (lib_handle_t*)handle;
+    
+    // Step 1: Get symbol name from ID using the imported symbols table
+    const char* sym_name = get_symbol_name_by_id(loader_info->imported_symbols, sym_id);
+    if (!sym_name) {
+        debug_error("Could not resolve symbol name");
+        return NULL;
+    }
+    
+    debug_info("Resolving symbol name");
+    
+    // Step 2: Find function address by name in the exported symbols table
+    void* func_addr = find_function_by_name(loader_info->plt_resolve_table, sym_name);
+    if (!func_addr) {
+        debug_error("Could not find function address");
+        return NULL;
+    }
+    
+    return func_addr;
+}
+
+/**
+ * Initialise la bibliothèque en configurant les pointeurs loader_info
+ * 
+ * @param handle Handle de la bibliothèque
+ * @param plt_table Table des symboles pour la résolution PLT
+ * @return 0 en cas de succès, -1 en cas d'erreur
+ */
+int init_library(void* handle, void* plt_table) {
+    printf("Initialisation de la bibliothèque\n");
+    if (!handle) {
+        debug_error("Handle invalide");
+        return -1;
+    }
+    
+    lib_handle_t* lib = (lib_handle_t*)handle;
+    void* loader_info_addr = NULL;
+    
+    // Rechercher la structure loader_info dans la bibliothèque
+    if (find_dynamic_symbol(lib->base_addr, &lib->hdr, lib->phdrs, 
+                         "loader_info", &loader_info_addr) != 0 || !loader_info_addr) {
+        debug_warn("Structure loader_info non trouvée");
+        return -1;
+    }
+    
+    // Configurer les pointeurs dans la structure loader_info
+    loader_info_t* info = (loader_info_t*)loader_info_addr;
+    
+    // Configurer le handle du loader
+    if (info->loader_handle) {
+        *(info->loader_handle) = handle;
+        debug_detail("Handle configuré dans loader_info");
+    }
+    
+    // Configurer le trampoline
+    if (info->isos_trampoline) {
+        *(info->isos_trampoline) = isos_trampoline;
+        debug_detail("Trampoline configuré dans loader_info");
+    }
+    
+    // Configurer la table de résolution PLT
+    if (plt_table) {
+        lib->plt_resolve_table = plt_table;
+        debug_detail("Table de résolution PLT configurée");
+    }
+    
+    return 0;
+}
 // Function to get symbol name from ID
 const char* get_symbol_name_by_id(const char** imported_symbols, int sym_id) {
     if (!imported_symbols) {
@@ -220,89 +152,106 @@ void* find_function_by_name(symbol_entry* exported_symbols, const char* name) {
     debug_error("Symbol not found in exported symbols table");
     return NULL;
 }// The main PLT resolver function
-void* loader_plt_resolver(void* handle, int sym_id) {
-    if (!handle) {
-        debug_error("Invalid handle in PLT resolver");
-        return NULL;
-    }
-    
-    // Cast handle to our loader_info structure
-    lib_handle_t* loader_info = (lib_handle_t*)handle;
-    
-    // Step 1: Get symbol name from ID using the imported symbols table
-    const char* sym_name = get_symbol_name_by_id(loader_info->imported_symbols, sym_id);
-    if (!sym_name) {
-        debug_error("Could not resolve symbol name");
-        return NULL;
-    }
-    
-    debug_info("Resolving symbol name");
-    
-    // Step 2: Find function address by name in the exported symbols table
-    void* func_addr = find_function_by_name(loader_info->plt_resolve_table, sym_name);
-    if (!func_addr) {
-        debug_error("Could not find function address");
-        return NULL;
-    }
-    
-    return func_addr;
-}
-    // Add this function to loader.c
-void* loader_plt_resolver(void* handle, int sym_id) {
-    if (!handle) {
-        debug_error("Invalid handle in PLT resolver");
-        return NULL;
-    }
-    
-    lib_handle_t* lib_handle = (lib_handle_t*)handle;
-    
-    // Get imported symbols table from the library
-    const char** imported_symbols = NULL;
-    void* sym_addr = NULL;
-    
-    if (find_dynamic_symbol(lib_handle->base_addr, &lib_handle->hdr, 
-                          lib_handle->phdrs, "imported_symbols", 
-                          &sym_addr) != 0 || !sym_addr) {
-        debug_error("Failed to find imported_symbols table");
-        return NULL;
-    }
-    
-    imported_symbols = (const char**)sym_addr;
-    
-    if (!imported_symbols || sym_id <= 0) {
-        debug_error("Invalid symbol ID or imported symbols table");
-        return NULL;
-    }
-    
-    const char* sym_name = imported_symbols[sym_id];
-    debug_info("Resolving PLT symbol");
-    
-    // Find symbol in our PLT resolve table
-    symbol_entry* resolve_table = (symbol_entry*)lib_handle->plt_resolve_table;
-    if (!resolve_table) {
-        debug_error("PLT resolve table not set");
-        return NULL;
-    }
-    
-    // Search for the symbol
-    int i = 0;
-    while (resolve_table[i].name != NULL) {
-        if (strcmp(resolve_table[i].name, sym_name) == 0) {
-            debug_detail("Resolved PLT symbol");
-            return resolve_table[i].addr;
-        }
-        i++;
-    }
-    
-    debug_error("Symbol not found in PLT resolve table");
-    return NULL;
-}
-int my_set_plt_resolve(void* handle, void* resolve_table) {
-    if (!handle) {
-        debug_error("Invalid handle");
+int find_dynamic_symbol(void* base_addr, elf_header* hdr, elf_phdr* phdrs, 
+                    const char* name, void** symbol_addr) {
+    // Vérif de base
+    if (!base_addr || !hdr || !name || !symbol_addr) {
         return -1;
     }
-    lib_handle_t* lib_handle = (lib_handle_t*)handle;
-    lib_handle->plt_resolve_table = resolve_table;
-    return 0;
+    
+    // Si le point d'entrée est valide
+    if (hdr->e_entry != 0) {
+        // Définir notre structure symbole
+        typedef struct {
+            const char* name;
+            void* addr;
+        } symbol_entry;
+        
+        // Définir le type de get_symbol_table
+        typedef symbol_entry* (*get_table_func)();
+        
+        // Calculer l'adresse de get_symbol_table
+        get_table_func get_table = (get_table_func)((char*)base_addr + hdr->e_entry);
+        
+        // Appeler la fonction pour obtenir la table
+        symbol_entry* table = NULL;
+        
+        // Essayer d'appeler get_table - attention au segfault potentiel
+        table = get_table();
+        
+        if (table) {
+            // Parcourir la table des symboles
+            for (int i = 0; table[i].name != NULL; i++) {
+                if (strcmp(table[i].name, name) == 0) {
+                    // Symbole trouvé, mais adresse peut être relative
+                    if ((uintptr_t)table[i].addr < (uintptr_t)base_addr) {
+                        // Adresse est un offset
+                        *symbol_addr = (void*)((char*)base_addr + (uintptr_t)table[i].addr);
+                    } else {
+                        // Adresse déjà absolue
+                        *symbol_addr = table[i].addr;
+                    }
+                    return 0;
+                }
+            }
+        }
+    }
+    
+    // Si on arrive ici, essayer avec la méthode standard (segment dynamic)
+    elf_phdr* dyn_seg = NULL;
+    for (int i = 0; i < hdr->e_phnum; i++) {
+        if (phdrs[i].p_type == PT_DYNAMIC) {
+            dyn_seg = &phdrs[i];
+            break;
+        }
+    }
+    
+    if (!dyn_seg) {
+        return -1;
+    }
+    
+    Elf64_Sym* symtab = NULL;
+    char* strtab = NULL;
+    
+    uint64_t* dynamic = (uint64_t*)((char*)base_addr + dyn_seg->p_vaddr);
+    if (!dynamic) {
+        return -1;
+    }
+    
+    int i = 0;
+    while (dynamic[i] != DT_NULL) {
+        uint64_t tag = dynamic[i++];
+        uint64_t val = dynamic[i++];
+        
+        if (tag == DT_SYMTAB) {
+            symtab = (Elf64_Sym*)((char*)base_addr + val);
+        }
+        else if (tag == DT_STRTAB) {
+            strtab = (char*)base_addr + val;
+        }
+    }
+    
+    if (!symtab || !strtab) {
+        return -1;
+    }
+    
+    for (i = 0; i < 100; i++) {
+        Elf64_Sym sym = symtab[i];
+        
+        if (sym.st_name == 0) {
+            continue;
+        }
+        
+        char* sym_name = strtab + sym.st_name;
+        if (strcmp(sym_name, name) == 0) {
+            if (sym.st_value == 0) {
+                return -1;
+            }
+            
+            *symbol_addr = (void*)((char*)base_addr + sym.st_value);
+            return 0;
+        }
+    }
+    
+    return -1;
 }

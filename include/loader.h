@@ -20,4 +20,7 @@ typedef struct {
     
 
 } loader_info_t;
+int init_library(void* handle, void* plt_table);
+const char* get_symbol_name_by_id(const char** imported_symbols, int sym_id) ;
+void* find_function_by_name(symbol_entry* exported_symbols, const char* name) ;
 #endif

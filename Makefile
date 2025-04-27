@@ -1,58 +1,47 @@
 # 
-# This Makefile is for the ISOS project
+# This Makefile is for the ISOS project and ensure compatibility with the CI.
+# Make sure to include this file in your root Makefile (i.e., at the top-level of your repository).
 #
 
-INCLUDE_DIR= ./include
+# TODO
+# Initialize this variable to point to the directory holding your header if any.
+# Otherwise, the CI will consider the top-level directory.
+INCLUDE_DIR=./include
 
-SRC_FILES=./src/loader.c ./src/utils.c ./src/elf_parser.c ./src/load_library.c ./src/relocation.c ./src/debug.c ./src/symbol_parser.c
- 
-# Compiler settings
-CC = gcc
-CFLAGS = -Wall -I$(INCLUDE_DIR) -g  
-LDFLAGS = -shared -nostdlib -O3 
 
-# Main targets
-all: libmylib.so libmylib_hidden.so isos_loader
+# TODO
+# Initialize this variable with a space separated list of the paths to the loader source files (not the library).
+# You can use some make native function such as wildcard if you want.
+SRC_FILES=$(wildcard ./src/*.c)
 
-# Simple shared library
-libmylib.so: src/mylib.c
-	$(CC) $(CFLAGS) $(LDFLAGS) -e loader_info -o $@ $<
 
-# Shared library with hidden visibility
-libmylib_hidden.so: src/mylib.c
-	$(CC) $(CFLAGS) $(LDFLAGS)  -shared -fvisibility=hidden -e loader_info -fPIC   -o $@ $<
-# Compilation des fichiers sources en objets
-loader.o: src/loader.c
-	$(CC) $(CFLAGS) -c -o $@ $<
 
-utils.o: src/utils.c
-	$(CC) $(CFLAGS) -c -o $@ $<
+# TODO
+# Uncomment this and initialize it to the correct path(s) to your source files if your project sources are not located in `src`.
+#vpath %.c path/to/src
 
-elf_parser.o: src/elf_parser.c
-	$(CC) $(CFLAGS) -c -o $@ $<
 
-load_library.o: src/load_library.c
-	$(CC) $(CFLAGS) -c -o $@ $<
+# compiler
+CC=gcc 
 
-relocation.o: src/relocation.c
-	$(CC) $(CFLAGS) -c -o $@ $<
+# compiler flags with -rdynamic 
+CFLAGS   := -g -Wall -Wextra -I$(INCLUDE_DIR)
+LDFLAGS  := -rdynamic
+all: isos_loader  src/mylib.so
 
-debug.o: src/debug.c
-	$(CC) $(CFLAGS) -c -o $@ $<
 
-symbol_parser.o: src/symbol_parser.c
-	$(CC) $(CFLAGS) -c -o $@ $<
+src/mylib.so: src/mylib.c
+	
+	gcc -shared -I ./include $^ --entry loader_info  -o $@ -fvisibility=hidden
 
-# Main program
-isos_loader: loader.o utils.o elf_parser.o load_library.o relocation.o debug.o symbol_parser.o
-	$(CC) -o $@ $^
+	
+isos_loader : $(SRC_FILES:.c=.o)
+	$(CC)  $(CFLAGS) -o $@ $^ 
 
-# Run tests
-test:
-	./test/elf_parser.sh 
 
-# Clean up
+%.o: %.c
+	$(CC) $(CFLAGS) -c $< -o $@
 clean:
-	rm -f *.o *.so isos_loader
+	rm -f isos_loader  $(wildcard ./src/*.o)
 
-.PHONY: all clean test
+.PHONY: clean
