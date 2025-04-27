@@ -291,13 +291,11 @@ int main(int argc, char **argv) {
         debug_error("Échec du chargement");
         return 1;
     }
-    
     // Configuration de la résolution PLT
     if (my_set_plt_resolve(handle, imported_functions) != 0) {
         debug_error("Échec configuration PLT resolver");
         return 1;
     }
-
     // Initialisation de la bibliothèque
     if (init_library(handle, imported_functions) != 0) {
         debug_warn("Échec initialisation bibliothèque");
@@ -310,7 +308,7 @@ int main(int argc, char **argv) {
         if (args.verbose) {
             debug_info("Recherche de fonction");
         }
-        
+        printf("Recherche de la fonction %s\n", args.func_names[i]);
         // Recherche de l'adresse de la fonction
         void* func_addr = my_dlsym(handle, args.func_names[i]);
         if (func_addr) {

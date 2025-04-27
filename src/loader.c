@@ -77,6 +77,7 @@ void* loader_plt_resolver(void* handle, int sym_id) {
  * @param plt_table Table des symboles pour la résolution PLT
  * @return 0 en cas de succès, -1 en cas d'erreur
  */
+
 int init_library(void* handle, void* plt_table) {
     printf("Initialisation de la bibliothèque\n");
     if (!handle) {
@@ -84,41 +85,30 @@ int init_library(void* handle, void* plt_table) {
         return -1;
     }
     
-    lib_handle_t* lib = (lib_handle_t*)handle;
-    void* loader_info_addr = NULL;
+   lib_handle_t* lib = (lib_handle_t*)handle;
+    if (lib->hdr.e_entry != 0) {
+    // Calculer l'adresse absolue de loader_info
+    loader_info_t* info = (loader_info_t*)((char*)lib->base_addr + lib->hdr.e_entry);
     
-    // Rechercher la structure loader_info dans la bibliothèque
-    if (find_dynamic_symbol(lib->base_addr, &lib->hdr, lib->phdrs, 
-                         "loader_info", &loader_info_addr) != 0 || !loader_info_addr) {
-        debug_warn("Structure loader_info non trouvée");
-        return -1;
-    }
+    // Afficher des infos pour déboguer
+    printf("loader_info à l'adresse: %p\n", info);
     
-    // Configurer les pointeurs dans la structure loader_info
-    loader_info_t* info = (loader_info_t*)loader_info_addr;
-    
-    // Configurer le handle du loader
+    // Configurer les pointeurs
     if (info->loader_handle) {
+        printf("Mise à jour de loader_handle à l'adresse: %p\n", info->loader_handle);
         *(info->loader_handle) = handle;
-        debug_detail("Handle configuré dans loader_info");
     }
     
-    // Configurer le trampoline
     if (info->isos_trampoline) {
+        printf("Mise à jour de isos_trampoline à l'adresse: %p\n", info->isos_trampoline);
         *(info->isos_trampoline) = isos_trampoline;
-        debug_detail("Trampoline configuré dans loader_info");
     }
     
-    // Configurer la table de résolution PLT
-    if (plt_table) {
-        lib->plt_resolve_table = plt_table;
-        debug_detail("Table de résolution PLT configurée");
-    }
-    
+    // Configurer la table PLT
     return 0;
 }
-// Function to get symbol name from ID
-const char* get_symbol_name_by_id(const char** imported_symbols, int sym_id) {
+}
+ const char* get_symbol_name_by_id(const char** imported_symbols, int sym_id) {
     if (!imported_symbols) {
         debug_error("Imported symbols table is NULL");
         return NULL;

@@ -196,6 +196,44 @@ void* my_dlopen(const char* library_path) {
     return (void*)handle;
 }
 void* my_dlsym(void* handle, const char* symbol_name) {
+    // Check that handle is valid
+    if (!handle) {
+        debug_error("Handle invalide");
+        return NULL;
+    }
+    
+    // Cast to your library handle type
+    lib_handle_t* lib = (lib_handle_t*)handle;
+    
+    // Check if the entry point exists
+    if (lib->base_addr && lib->hdr.e_entry != 0) {
+        // Get loader_info directly from entry point
+        loader_info_t* info = (loader_info_t*)((char*)lib->base_addr + lib->hdr.e_entry);
+        
+        // If loader_info exists and has an exported symbols table
+        if (info && info->exported_symbols) {
+            // Look for the symbol in the exported symbols table
+            symbol_entry* table = info->exported_symbols;
+            for (int i = 0; table[i].name != NULL; i++) {
+                if (strcmp(table[i].name, symbol_name) == 0) {
+                    // Found the symbol!
+                    // Check if the address is relative or absolute
+                    if ((uintptr_t)table[i].addr < (uintptr_t)lib->base_addr) {
+                        // Address is relative to the base
+                        return (void*)((char*)lib->base_addr + (uintptr_t)table[i].addr);
+                    } else {
+                        // Address is already absolute
+                        return table[i].addr;
+                    }
+                }
+            }
+        }
+    }
+    
+    // Symbol not found
+    return NULL;
+}
+/*void* my_dlsym(void* handle, const char* symbol_name) {
     // On vérifie juste que le handle est valide (non NULL)
     if (!handle) {
         debug_error("Handle invalide");
@@ -242,13 +280,14 @@ void* my_dlsym(void* handle, const char* symbol_name) {
    
     return NULL;
 }
-
-int my_set_plt_resolve(void* handle, void* resolve_table) {
+*/
+int     my_set_plt_resolve(void* handle, void* resolve_table) {
     if (!handle) {
         debug_error("Invalid handle");
         return -1;
     }
     lib_handle_t* lib_handle = (lib_handle_t*)handle;
+    
     lib_handle->plt_resolve_table = resolve_table;
     return 0;
 }
