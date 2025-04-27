@@ -191,6 +191,15 @@ void* my_dlopen(const char* library_path) {
         return NULL;
     }
     
+
+
+    loader_info_t* info = (loader_info_t*)((char*)base_addr + handle->hdr.e_entry); 
+
+    // add tabsymbol to handel 
+    handle->imported_symbols = info->imported_symbols ;
+    handle->exported_symbols  =    info->exported_symbols;
+
+
     close(fd);
     
     return (void*)handle;
@@ -208,12 +217,13 @@ void* my_dlsym(void* handle, const char* symbol_name) {
     // Check if the entry point exists
     if (lib->base_addr && lib->hdr.e_entry != 0) {
         // Get loader_info directly from entry point
-        loader_info_t* info = (loader_info_t*)((char*)lib->base_addr + lib->hdr.e_entry);
+            
+
         
         // If loader_info exists and has an exported symbols table
-        if (info && info->exported_symbols) {
+        if ( lib->exported_symbols) {
             // Look for the symbol in the exported symbols table
-            symbol_entry* table = info->exported_symbols;
+            symbol_entry* table = lib->exported_symbols;
             for (int i = 0; table[i].name != NULL; i++) {
                 if (strcmp(table[i].name, symbol_name) == 0) {
                     // Found the symbol!

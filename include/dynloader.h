@@ -13,11 +13,10 @@ int validate_load_segments(const char* library_path, elf_header* hdr);
 
 typedef struct {
     void* base_addr;
-    elf_header hdr;
-    elf_phdr* phdrs;
     void* plt_resolve_table;
     // Exported symbols table
     symbol_entry* imported_symbols;
+    symbol_entry* exported_symbols;
 } lib_handle_t;
 
 int my_set_plt_resolve(void* handle, void* resolve_table);
