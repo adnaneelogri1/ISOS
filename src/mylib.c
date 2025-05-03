@@ -8,41 +8,42 @@ void *loader_handle = NULL;
 void *isos_trampoline = NULL;
 
 // Prototypes des fonctions importées
-const char* new_foo();
-const char* new_bar();
+const char *new_foo();
+
+const char *new_bar();
 
 // Implémentation des fonctions exportées
-const char* foo_exported() {
+const char *foo_exported() {
     return "Hello from foo_exported()";
 }
 
-const char* bar_exported() {
+const char *bar_exported() {
     return "Hello from bar_exported()";
 }
 
 // Implémentation des fonctions qui importent
-const char* foo_imported() {
+const char *foo_imported() {
     return new_foo();
 }
 
-const char* bar_imported() {
+const char *bar_imported() {
     return new_bar();
 }
 
 // Table des symboles importés
-const char* imported_symbols[] = {
-    "new_foo",  // ID 0
-    "new_bar",  // ID 1
+const char *imported_symbols[] = {
+    "new_foo", // ID 0
+    "new_bar", // ID 1
     NULL
 };
 
 // Table des symboles exportés
 symbol_entry exported_symbols[] = {
-    {"foo_exported", (void*)foo_exported},
-    {"bar_exported", (void*)bar_exported},
-    {"foo_imported", (void*)foo_imported},
-    {"bar_imported", (void*)bar_imported},
-    {NULL, NULL}  // Fin de la table
+    {"foo_exported", (void *) foo_exported},
+    {"bar_exported", (void *) bar_exported},
+    {"foo_imported", (void *) foo_imported},
+    {"bar_imported", (void *) bar_imported},
+    {NULL, NULL} // Fin de la table
 };
 
 // Structure loader_info
@@ -59,6 +60,6 @@ PLT_ENTRY(0, new_foo)
 PLT_ENTRY(1, new_bar)
 
 // Fonction get_symbol_table pour l'entry point
-symbol_entry* get_symbol_table() {
+symbol_entry *get_symbol_table() {
     return exported_symbols;
 }

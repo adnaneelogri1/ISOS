@@ -15,7 +15,7 @@
 #define PT_LOAD     1
 #define PT_DYNAMIC  2
 
-#define PF_X        0x1
+#define PF_X        0x1  
 #define PF_W        0x2
 #define PF_R        0x4
 

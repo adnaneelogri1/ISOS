@@ -15,7 +15,7 @@ typedef struct {
     void* base_addr;
     void* plt_resolve_table;
     // Exported symbols table
-    symbol_entry* imported_symbols;
+    const char** imported_symbols;
     symbol_entry* exported_symbols;
 } lib_handle_t;
 

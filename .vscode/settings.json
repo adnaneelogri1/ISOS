@@ -8,6 +8,7 @@
         "aarch64.h": "c",
         "isos-support.h": "c",
         "loader.h": "c",
-        "stdio.h": "c"
+        "stdio.h": "c",
+        "x86_64.h": "c"
     }
 }

@@ -1,16 +1,16 @@
-
 #pragma once
+// clang-format off
 
 /**
  * Define some macros according to the host architecture.  
  */
 
 #if defined(__x86_64__)
-#include "x86_64.h"
+#include "arm/x86_64.h"
 #elif defined(__arm__)
-#include "arm.h"
+#include "arm/arm.h"
 #elif defined(__aarch64__)
-#include "aarch64.h"
+#include "arm/aarch64.h"
 #else
 #error "Unsupported architecture"
 #endif
